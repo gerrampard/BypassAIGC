@@ -1,4 +1,3 @@
-from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -16,7 +15,7 @@ from app.models.models import CustomPrompt
 from app.database import SessionLocal
 from app.services.ai_service import get_default_polish_prompt, get_default_enhance_prompt
 
-# 安全检查 - 在应用创建前验证配置（fail-fast模式）
+# 检查默认密钥
 if settings.SECRET_KEY == "your-secret-key-change-this-in-production":
     print("\n" + "="*60)
     print("⚠️  安全警告: 检测到默认 SECRET_KEY!")
@@ -36,11 +35,36 @@ if settings.ADMIN_PASSWORD == "admin123":
     print("="*60 + "\n")
     # 仅警告,不强制退出 (开发环境可能需要)
 
+app = FastAPI(
+    title="AI 论文润色增强系统",
+    description="高质量论文润色与原创性学术表达增强",
+    version="1.0.0"
+)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """应用生命周期管理"""
-    # 启动时初始化
+# 添加 Gzip 压缩中间件以减少响应体积
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# CORS 配置
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 生产环境应设置具体域名
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 注册路由（添加 /api 前缀，与 backend/app/main.py 保持一致）
+app.include_router(admin.router, prefix="/api")
+app.include_router(prompts.router, prefix="/api")
+app.include_router(optimization.router, prefix="/api")
+
+# 速率限制中间件已移除
+
+
+@app.on_event("startup")
+async def startup_event():
+    """启动时初始化"""
+    # 初始化数据库
     init_db()
     
     # 创建系统默认提示词
@@ -80,36 +104,6 @@ async def lifespan(app: FastAPI):
         db.commit()
     finally:
         db.close()
-    
-    yield
-    # 关闭时清理（如有需要）
-
-
-app = FastAPI(
-    title="AI 论文润色增强系统",
-    description="高质量论文润色与原创性学术表达增强",
-    version="1.0.0",
-    lifespan=lifespan
-)
-
-# 添加 Gzip 压缩中间件以减少响应体积
-app.add_middleware(GZipMiddleware, minimum_size=1000)
-
-# CORS 配置
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # 生产环境应设置具体域名
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# 注册路由（添加 /api 前缀）
-app.include_router(admin.router, prefix="/api")
-app.include_router(prompts.router, prefix="/api")
-app.include_router(optimization.router, prefix="/api")
-
-# 速率限制中间件已移除
 
 
 @app.get("/")
